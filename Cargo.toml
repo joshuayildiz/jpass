@@ -1,0 +1,13 @@
+[package]
+name = "jpass"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+age = { version = "0.12.1", features = ["armor"] }
+arboard = { version = "3.7.0", features = ["wayland-data-control"] }
+dirs = "7.0.0"
+eframe = "0.37.0"
+getrandom = "0.4.3"
+global-hotkey = "0.9.0"
+rpassword = "7.5.4"
