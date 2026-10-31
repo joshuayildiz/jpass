@@ -1473,7 +1473,7 @@ fn main() -> eframe::Result {
              jpass --toggle    show/hide the running instance (bind this to a global shortcut)\n  \
              jpass --show      show the running instance\n  \
              jpass --hidden    start in the background without a window\n  \
-             jpass --import F  merge entries from plaintext CSV file F into the vault (no duplicates)\n  \
+             jpass --import F  merge entries from CSV file F (plaintext or age-encrypted) into the vault, no duplicates\n  \
              jpass --install   (re)install as an app + start at login (also done on first run)\n\n\
              File: ~/pCloudDrive/pass.rage (created on first run if missing)\n\n\
              Built-in global hotkey (macOS / X11): Cmd+Space"
