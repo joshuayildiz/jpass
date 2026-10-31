@@ -128,10 +128,8 @@ Debug builds understand a few `JPASS_DEV_*` environment variables used for UI te
 
 ## Licensing
 
-**jpass itself has no license yet.** Until the author picks one, the code is "all rights
-reserved" by default. `MIT OR Apache-2.0` is the usual choice in the Rust ecosystem and is
-compatible with everything below; add a `LICENSE` file (and a `license` field in `Cargo.toml`)
-before publishing or distributing binaries.
+**jpass itself is MIT licensed** (see `LICENSE`). The MIT license is compatible with every
+dependency below, including the Apache-2.0-only ones (`winit`, `glutin`, `rpassword`, ...).
 
 **Bundled fonts: SIL Open Font License 1.1.** IBM Plex Sans (Regular, SemiBold) and IBM Plex
 Mono (Regular), © 2017 IBM Corp., Reserved Font Name "Plex", are embedded in the binary and
