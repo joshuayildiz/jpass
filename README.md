@@ -11,13 +11,13 @@ jpass writes nothing else to disk except that file (and a `.bak` of the previous
 version next to it), so syncing the folder (here: pCloud) is all the backup and
 multi-device story there is.
 
-Linux (tested on KDE/Wayland, CachyOS) and macOS (written for, **not yet tested**).
+Linux (tested on KDE/Wayland, CachyOS) and macOS (tested).
 
 ## What it is for
 
 - Looking up and copying credentials quickly, from the keyboard, from anywhere.
 - Keeping the vault as a plain, inspectable, rage-compatible file: you can always
-  decrypt it without jpass using `rage -d ~/pCloudDrive/pass.rage` (or `age -d`).
+  decrypt it without jpass using `rage -d pass.rage` (or `age -d`) on the file in your pCloud folder.
 - Generating strong, readable passwords (Apple style, e.g. `sichan-2eMhim-sogkad`).
 
 It is a personal tool, not a team vault: one passphrase, one file, no accounts, no network code.
@@ -42,7 +42,9 @@ The clipboard is cleared 20 seconds after a copy.
 
 On Wayland the compositor does not let an application grab keys by itself. The built-in
 shortcut works through XWayland; the dependable alternative is to bind the command
-`jpass --toggle` to a key in your desktop's shortcut settings.
+`jpass --toggle` to a key in your desktop's shortcut settings. (KDE may refuse to give the
+keyboard to a window that was shown without a key press behind it, for example by a script
+running `jpass --toggle`; the window then just blinks in the task bar.)
 
 ### Command line
 

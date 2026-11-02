@@ -391,7 +391,7 @@ impl App {
         // `jpass --toggle` to a key in the desktop's shortcut settings.
         let mut hk_mgr = None;
         if let Ok(mgr) = GlobalHotKeyManager::new() {
-            // The Cmd key: `Super` on macOS. On this Linux keyboard layout the
+            // The Cmd key: `Meta` on macOS. On this Linux keyboard layout the
             // physical Cmd key is reported as Alt (Super sits on Option).
             #[cfg(target_os = "macos")]
             let mods = Modifiers::META;

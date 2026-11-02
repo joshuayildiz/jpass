@@ -267,7 +267,7 @@ pub fn stamp(path: &Path) -> Option<Stamp> {
 
 /// Is the directory that holds the vault actually available?
 ///
-/// `~/pCloudDrive` is a FUSE mount that pCloud creates *after* login; before
+/// On Linux `~/pCloudDrive` is a FUSE mount that pCloud creates *after* login; before
 /// that it is an empty plain directory, and writing a vault there would hide
 /// it under the mount and never upload it. On Linux we therefore require a
 /// real mount point; elsewhere we require the folder to be non-empty.
