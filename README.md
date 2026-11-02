@@ -5,7 +5,8 @@ A small desktop password manager with a Spotlight-style popup.
 Press a global shortcut, type a few letters, press **Enter**: the password is on
 your clipboard and the window is gone. That is the whole workflow.
 
-Your passwords live in **one age-encrypted file**, `~/pCloudDrive/pass.rage`.
+Your passwords live in **one age-encrypted file**, `~/pCloudDrive/pass.rage`
+(`~/pCloud Drive/pass.rage` on macOS, where pCloud mounts under that name).
 jpass writes nothing else to disk except that file (and a `.bak` of the previous
 version next to it), so syncing the folder (here: pCloud) is all the backup and
 multi-device story there is.
@@ -82,7 +83,7 @@ Gmail,   joshua@gmail.com, s3cret!
 - Saving encrypts, verifies it can decrypt the result, writes a temp file and renames it over
   the vault, so a half-written file is never synced. If the file changed on disk meanwhile
   (another machine synced), jpass refuses to overwrite it and offers a reload.
-- jpass waits for `~/pCloudDrive` to be mounted and never creates a vault in an unmounted folder.
+- jpass waits for the pCloud folder to be mounted and never creates a vault in an unmounted folder.
 
 ## Security notes
 

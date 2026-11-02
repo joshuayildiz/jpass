@@ -394,7 +394,7 @@ impl App {
             // The Cmd key: `Super` on macOS. On this Linux keyboard layout the
             // physical Cmd key is reported as Alt (Super sits on Option).
             #[cfg(target_os = "macos")]
-            let mods = Modifiers::SUPER;
+            let mods = Modifiers::META;
             #[cfg(not(target_os = "macos"))]
             let mods = Modifiers::ALT;
             let hk = HotKey::new(Some(mods), Code::Space);
@@ -502,6 +502,10 @@ impl App {
         self.selected = 0;
         self.error.clear();
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(false));
+        // Also hide the application itself: AppKit then activates the app that
+        // was in front before jpass, so the keyboard goes back where it was.
+        #[cfg(target_os = "macos")]
+        macos::hide_app();
     }
 
     fn show(&mut self, ctx: &egui::Context) {
@@ -518,6 +522,10 @@ impl App {
         self.seen_focus = false;
         self.focus_input = true;
         self.need_center = true;
+        // Undo `hide_app`: a hidden application keeps its windows off screen
+        // even after they are ordered front, so unhide before showing.
+        #[cfg(target_os = "macos")]
+        macos::unhide_app();
         ctx.send_viewport_cmd(egui::ViewportCommand::Visible(true));
         ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
         // `Focus` is ignored while the window is still being mapped, so it is
@@ -1259,10 +1267,17 @@ impl eframe::App for App {
         [0.0, 0.0, 0.0, 0.0]
     }
 
+    /// Runs before every `ui` pass and, unlike `ui`, also while the window is
+    /// hidden: eframe skips the egui pass for a hidden viewport (macOS, Windows)
+    /// and only calls `logic`. Commands that bring the window back must
+    /// therefore be handled here, or a hidden jpass could never show again.
+    fn logic(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.handle_command(ctx);
+        self.poll_jobs();
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
-        self.handle_command(&ctx);
-        self.poll_jobs();
         if self.busy.is_some() {
             ctx.request_repaint_after(Duration::from_millis(50));
         }
@@ -1475,7 +1490,7 @@ fn main() -> eframe::Result {
              jpass --hidden    start in the background without a window\n  \
              jpass --import F  merge entries from CSV file F (plaintext or age-encrypted) into the vault, no duplicates\n  \
              jpass --install   (re)install as an app + start at login (also done on first run)\n\n\
-             File: ~/pCloudDrive/pass.rage (created on first run if missing)\n\n\
+             File: ~/pCloudDrive/pass.rage, on macOS ~/pCloud Drive/pass.rage (created on first run if missing)\n\n\
              Built-in global hotkey (macOS / X11): Cmd+Space"
         );
         return Ok(());
@@ -1551,4 +1566,25 @@ fn main() -> eframe::Result {
         options,
         Box::new(move |cc| Ok(Box::new(App::new(cc, hidden, listener)))),
     )
+}
+
+#[cfg(target_os = "macos")]
+mod macos {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::NSApplication;
+
+    /// Hide the application (what Cmd+H does). AppKit activates the
+    /// previously active app, so focus returns to where the user was.
+    pub fn hide_app() {
+        if let Some(mtm) = MainThreadMarker::new() {
+            NSApplication::sharedApplication(mtm).hide(None);
+        }
+    }
+
+    /// Restore a hidden application and activate it.
+    pub fn unhide_app() {
+        if let Some(mtm) = MainThreadMarker::new() {
+            NSApplication::sharedApplication(mtm).unhide(None);
+        }
+    }
 }

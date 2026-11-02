@@ -294,12 +294,19 @@ pub fn drive_ready(dir: &Path) -> bool {
     }
 }
 
+/// `~/pCloudDrive/pass.rage` on Linux, `~/pCloud Drive/pass.rage` on macOS:
+/// the pCloud client mounts the drive under a different name on each.
 pub fn default_path() -> PathBuf {
     dirs::home_dir()
         .unwrap_or_else(|| PathBuf::from("."))
-        .join("pCloudDrive")
+        .join(DRIVE_DIR)
         .join("pass.rage")
 }
+
+#[cfg(target_os = "macos")]
+const DRIVE_DIR: &str = "pCloud Drive";
+#[cfg(not(target_os = "macos"))]
+const DRIVE_DIR: &str = "pCloudDrive";
 
 /// True if `bytes` look like an age file (binary or ASCII-armored).
 pub fn is_age(bytes: &[u8]) -> bool {

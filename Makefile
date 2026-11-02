@@ -43,7 +43,7 @@ start:
 endif
 
 # Removes the installed app, launcher, autostart entry and first-run marker.
-# Your encrypted vault (~/pCloudDrive/pass.rage and pass.rage.bak) is NOT touched.
+# Your encrypted vault (pass.rage and pass.rage.bak in your pCloud folder) is NOT touched.
 uninstall: stop
 ifeq ($(UNAME),Darwin)
 	-launchctl bootout gui/$$(id -u)/com.jpass.app 2>/dev/null
