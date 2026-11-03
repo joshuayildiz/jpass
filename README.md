@@ -42,26 +42,26 @@ The clipboard is cleared 20 seconds after a copy.
 
 On Wayland the compositor does not let an application grab keys by itself. The built-in
 shortcut works through XWayland; the dependable alternative is to bind the command
-`jpass --toggle` to a key in your desktop's shortcut settings. (KDE may refuse to give the
+`jpass toggle` to a key in your desktop's shortcut settings. (KDE may refuse to give the
 keyboard to a window that was shown without a key press behind it, for example by a script
-running `jpass --toggle`; the window then just blinks in the task bar.)
+running `jpass toggle`; the window then just blinks in the task bar.)
 
 ### Command line
 
 ```
-jpass                 start, or show/hide the running instance
-jpass --toggle        show/hide the running instance (bind this to a shortcut)
-jpass --show          show the running instance
-jpass --hidden        start in the background without a window (used for autostart)
-jpass --import FILE   merge entries from a CSV into the vault, skipping duplicates
-jpass --install       install as an app and start at login (also done on first run)
+jpass                start, or show/hide the running instance (same as `toggle`)
+jpass toggle         show/hide the running instance (bind this to a shortcut)
+jpass show           show the running instance
+jpass hidden         start in the background without a window (used for autostart)
+jpass import FILE    merge entries from a CSV into the vault, skipping duplicates
+jpass install        install as an app and start at login (also done on first run)
 ```
 
 Only one instance runs at a time; launching `jpass` again talks to the running one.
 
 ### Importing
 
-`jpass --import FILE` accepts a CSV in the same format as the vault, either plaintext or
+`jpass import FILE` accepts a CSV in the same format as the vault, either plaintext or
 age-encrypted with its own passphrase (press Enter at the second prompt to reuse the master
 passphrase). An entry is a duplicate when account, identifier and password all match
 (account and identifier compared ignoring case). Same account + identifier with a
@@ -108,7 +108,7 @@ make install        # build, install for the current user, restart the backgroun
 make uninstall      # remove what install created (never touches pass.rage)
 ```
 
-`make install` runs `jpass --install`, which sets up everything per user (no root):
+`make install` runs `jpass install`, which sets up everything per user (no root):
 
 - **Linux:** `~/.local/bin/jpass`, a launcher in `~/.local/share/applications`, and an
   autostart entry in `~/.config/autostart` (starts hidden at login so the hotkey is always live).
@@ -119,10 +119,15 @@ The same setup runs automatically the first time the binary is launched.
 ### Layout
 
 ```
-src/main.rs      UI, single-instance socket, global hotkey, CLI
+src/main.rs      argument parsing, dispatch to the modules below
+src/model.rs     Elm-style model: all state, `Msg`, a pure `update` that returns `Cmd`s
+src/view.rs      the view: Model in, Msgs out
+src/app.rs       runtime: runs the `Cmd`s (threads, clipboard, window), socket, global hotkey
+src/components.rs  theme, layout constants and the stateless widgets
 src/vault.rs     CSV parse/serialise (trim, align, sort), age encryption, atomic save, merge
 src/pwgen.rs     password generator
-src/install.rs   first-run / --install setup
+src/install.rs   first-run / install setup
+src/import.rs    `jpass import`
 assets/fonts/    IBM Plex Sans + Mono (bundled into the binary) and their license
 ```
 

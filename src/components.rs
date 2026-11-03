@@ -1,0 +1,326 @@
+//! The look of jpass: layout constants, colours, fonts and the small
+//! stateless widgets the screens are built from.
+
+use eframe::egui::{
+    self, Align, Color32, CornerRadius, CursorIcon, FontData, FontFamily, FontId, Layout, Rect,
+    RichText, Sense, Stroke, StrokeKind, UiBuilder, pos2, vec2,
+};
+use std::sync::Arc;
+
+// Layout (logical px). The window is a bit larger than the visible panel so
+// the drop shadow has room.
+pub const MARGIN: f32 = 14.0;
+pub const PANEL_W: f32 = 640.0;
+pub const WIN_W: f32 = PANEL_W + MARGIN * 2.0;
+pub const BAR_H: f32 = 64.0;
+pub const ROW_H: f32 = 54.0;
+pub const MAX_ROWS: usize = 7;
+pub const FOOT_H: f32 = 30.0;
+/// Left/right margin of everything inside the panel (icon, hints, links, forms).
+pub const GUTTER: f32 = 28.0;
+/// Text column: where the input text and the row text start, so they share one vertical axis.
+pub const TEXT_X: f32 = 60.0;
+/// A revealed row gets a third line.
+pub const REVEAL_EXTRA: f32 = 18.0;
+/// Height reserved for the error banner.
+pub const ERR_H: f32 = 48.0;
+/// Breathing room under the last element of the lock screen and the forms.
+pub const FORM_PAD: f32 = 22.0;
+
+// ───────────────────────────── theme ─────────────────────────────
+
+#[derive(Clone, Copy)]
+pub struct Pal {
+    pub dark: bool,
+    pub bg: Color32,
+    pub border: Color32,
+    pub text: Color32,
+    pub weak: Color32,
+    pub accent: Color32,
+    pub sel: Color32,
+    pub field: Color32,
+    pub danger: Color32,
+    pub ok: Color32,
+    /// Hard, un-blurred offset shadow (Elm's "terminal" box).
+    pub shadow: Color32,
+}
+
+impl Pal {
+    pub fn new(dark: bool) -> Pal {
+        // Light: elm-lang.org blue on white, ink from acadia.engineering.
+        // Dark: Acadia's cool gray scale.
+        if dark {
+            Pal {
+                dark,
+                bg: Color32::from_rgb(16, 24, 40),
+                border: Color32::from_rgb(52, 64, 85),
+                text: Color32::from_rgb(243, 244, 247),
+                weak: Color32::from_rgb(152, 162, 180),
+                accent: Color32::from_rgb(83, 177, 253),
+                sel: Color32::from_rgb(29, 41, 57),
+                field: Color32::from_rgb(16, 24, 40),
+                danger: Color32::from_rgb(247, 92, 134),
+                ok: Color32::from_rgb(50, 213, 131),
+                shadow: Color32::from_black_alpha(200),
+            }
+        } else {
+            Pal {
+                dark,
+                bg: Color32::WHITE,
+                border: Color32::from_rgb(208, 213, 221),
+                text: Color32::from_rgb(17, 22, 17),
+                weak: Color32::from_rgb(102, 112, 133),
+                accent: Color32::from_rgb(18, 147, 216),
+                sel: Color32::from_rgb(243, 244, 247),
+                field: Color32::WHITE,
+                danger: Color32::from_rgb(227, 28, 84),
+                ok: Color32::from_rgb(7, 148, 85),
+                shadow: Color32::from_rgb(215, 218, 224),
+            }
+        }
+    }
+}
+
+/// Ask the desktop whether it is in dark mode. Defaults to dark.
+pub fn detect_dark() -> bool {
+    use std::process::Command;
+    let out = |cmd: &str, args: &[&str]| -> Option<String> {
+        let o = Command::new(cmd).args(args).output().ok()?;
+        o.status.success().then(|| String::from_utf8_lossy(&o.stdout).to_lowercase())
+    };
+    #[cfg(target_os = "macos")]
+    {
+        return out("defaults", &["read", "-g", "AppleInterfaceStyle"])
+            .is_some_and(|s| s.contains("dark"));
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        // KDE: luminance of the window background colour in kdeglobals.
+        if let Some(cfg) = dirs::config_dir()
+            .and_then(|d| std::fs::read_to_string(d.join("kdeglobals")).ok())
+        {
+            let mut in_sec = false;
+            for line in cfg.lines() {
+                let l = line.trim();
+                if l.starts_with('[') {
+                    in_sec = l == "[Colors:Window]";
+                } else if in_sec {
+                    if let Some(v) = l.strip_prefix("BackgroundNormal=") {
+                        let c: Vec<f32> =
+                            v.split(',').filter_map(|x| x.trim().parse().ok()).collect();
+                        if c.len() >= 3 {
+                            return 0.299 * c[0] + 0.587 * c[1] + 0.114 * c[2] < 128.0;
+                        }
+                    }
+                }
+            }
+        }
+        // GNOME & friends.
+        if let Some(s) = out("gsettings", &["get", "org.gnome.desktop.interface", "color-scheme"]) {
+            if s.contains("dark") {
+                return true;
+            }
+            if s.contains("light") || s.contains("default") {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+pub const PLEX_SANS: &[u8] = include_bytes!("../assets/fonts/IBMPlexSans-Regular.ttf");
+pub const PLEX_SEMIBOLD: &[u8] = include_bytes!("../assets/fonts/IBMPlexSans-SemiBold.ttf");
+pub const PLEX_MONO: &[u8] = include_bytes!("../assets/fonts/IBMPlexMono-Regular.ttf");
+
+/// IBM Plex, as used on elm-lang.org and acadia.engineering.
+pub fn install_fonts(ctx: &egui::Context) {
+    let mut fonts = egui::FontDefinitions::default();
+    for (name, bytes) in [("plex", PLEX_SANS), ("plex-semibold", PLEX_SEMIBOLD), ("plex-mono", PLEX_MONO)] {
+        fonts.font_data.insert(name.into(), Arc::new(FontData::from_static(bytes)));
+    }
+    fonts.families.entry(FontFamily::Proportional).or_default().insert(0, "plex".into());
+    fonts.families.entry(FontFamily::Monospace).or_default().insert(0, "plex-mono".into());
+    fonts
+        .families
+        .insert(FontFamily::Name("semibold".into()), vec!["plex-semibold".into(), "plex".into()]);
+    ctx.set_fonts(fonts);
+}
+
+pub fn semibold(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name("semibold".into()))
+}
+
+pub fn apply_theme(ctx: &egui::Context, p: &Pal) {
+    let mut v = if p.dark { egui::Visuals::dark() } else { egui::Visuals::light() };
+    v.override_text_color = Some(p.text);
+    v.selection.bg_fill = p.accent.gamma_multiply(0.3);
+    v.selection.stroke = Stroke::new(1.0, p.accent);
+    v.extreme_bg_color = p.field;
+    v.window_fill = p.bg;
+    v.panel_fill = Color32::TRANSPARENT;
+    v.text_cursor.stroke = Stroke::new(2.0, p.accent);
+    v.widgets.noninteractive.bg_stroke = Stroke::new(1.0, p.border);
+    v.widgets.inactive.bg_stroke = Stroke::new(1.0, p.border);
+    v.widgets.inactive.weak_bg_fill = Color32::TRANSPARENT;
+    v.widgets.inactive.bg_fill = p.field;
+    v.widgets.hovered.bg_stroke = Stroke::new(1.0, p.accent);
+    v.widgets.hovered.weak_bg_fill = p.sel;
+    v.widgets.active.bg_stroke = Stroke::new(2.0, p.accent);
+    v.widgets.active.weak_bg_fill = p.sel;
+    for w in [
+        &mut v.widgets.inactive,
+        &mut v.widgets.hovered,
+        &mut v.widgets.active,
+        &mut v.widgets.noninteractive,
+        &mut v.widgets.open,
+    ] {
+        w.corner_radius = CornerRadius::ZERO;
+    }
+    v.window_corner_radius = CornerRadius::ZERO;
+    v.menu_corner_radius = CornerRadius::ZERO;
+    ctx.set_visuals(v);
+    ctx.global_style_mut(|s| {
+        s.spacing.item_spacing = vec2(10.0, 6.0);
+        s.spacing.button_padding = vec2(10.0, 5.0);
+    });
+}
+
+/// Plain text link in the accent colour; underlined on hover (elm-lang.org).
+pub fn link(ui: &mut egui::Ui, text: &str, color: Color32) -> egui::Response {
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), FontId::proportional(13.0), color);
+    let (rect, resp) = ui.allocate_exact_size(galley.size() + vec2(0.0, 6.0), Sense::click());
+    let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+    let pos = rect.left_center() - vec2(0.0, galley.size().y / 2.0);
+    let bottom = pos.y + galley.size().y;
+    ui.painter().galley(pos, galley, color);
+    if resp.hovered() {
+        ui.painter().hline(rect.x_range(), bottom, Stroke::new(1.0, color));
+    }
+    resp
+}
+
+/// Elm-style button: square, 2px outline, inverts on hover.
+pub fn flat_button(ui: &mut egui::Ui, label: &str, color: Color32, bg: Color32, enabled: bool) -> egui::Response {
+    let font = FontId::proportional(14.5);
+    let size = ui.painter().layout_no_wrap(label.to_owned(), font.clone(), color).size() + vec2(32.0, 14.0);
+    let (rect, resp) = ui.allocate_exact_size(size, if enabled { Sense::click() } else { Sense::hover() });
+    let hot = enabled && resp.hovered();
+    let line = if enabled { color } else { color.gamma_multiply(0.4) };
+    let (fill, fg) = if hot { (line, bg) } else { (Color32::TRANSPARENT, line) };
+    ui.painter().rect_filled(rect, 0.0, fill);
+    ui.painter().rect_stroke(rect, 0.0, Stroke::new(2.0, line), StrokeKind::Inside);
+    let g = ui.painter().layout_no_wrap(label.to_owned(), font, fg);
+    ui.painter().galley(rect.center() - g.size() / 2.0, g, fg);
+    if enabled { resp.on_hover_cursor(CursorIcon::PointingHand) } else { resp }
+}
+
+// ───────────────────────────── widgets ─────────────────────────────
+
+/// The 64px input bar: glyph on the left gutter, text on the shared text column.
+/// Leaves the layout cursor exactly at the bottom of the bar.
+pub fn search_bar(
+    ui: &mut egui::Ui,
+    p: &Pal,
+    text: &mut String,
+    focus: &mut bool,
+    hint: &str,
+    locked: bool,
+) -> egui::Response {
+    let gap = std::mem::replace(&mut ui.spacing_mut().item_spacing.y, 0.0);
+    let (rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), BAR_H), Sense::hover());
+    // Glyph: ink left edge on the gutter, optically centred on the text.
+    let cy = rect.center().y + 0.5;
+    let st = Stroke::new(1.6, p.text);
+    if locked {
+        let body = Rect::from_min_size(pos2(rect.left() + GUTTER, cy - 3.0), vec2(15.0, 11.0));
+        ui.painter().rect_stroke(body, 0.0, st, StrokeKind::Inside);
+        ui.painter().circle_stroke(pos2(body.center().x, body.top()), 4.5, st);
+    } else {
+        let c = pos2(rect.left() + GUTTER + 7.3, cy - 1.5);
+        ui.painter().circle_stroke(c, 6.5, st);
+        ui.painter().line_segment([c + vec2(4.8, 4.8), c + vec2(9.5, 9.5)], st);
+    }
+    // Measured: with this box the x-height band of the 20px text and the glyph share one centre.
+    let field = Rect::from_min_max(
+        pos2(rect.left() + TEXT_X, rect.top() + 8.5),
+        pos2(rect.right() - GUTTER, rect.bottom() - 15.5),
+    );
+    let mut r = None;
+    ui.scope_builder(UiBuilder::new().max_rect(field).layout(Layout::left_to_right(Align::Center)), |ui| {
+        r = Some(ui.add(
+            egui::TextEdit::singleline(text)
+                .font(FontId::proportional(20.0))
+                .frame(egui::Frame::NONE)
+                .password(locked)
+                .hint_text(RichText::new(hint).font(FontId::proportional(20.0)).color(p.weak))
+                .desired_width(field.width())
+                .margin(vec2(0.0, 4.0)),
+        ));
+    });
+    // `scope_builder` would otherwise leave the cursor inside the bar.
+    ui.advance_cursor_after_rect(rect);
+    ui.spacing_mut().item_spacing.y = gap;
+    let r = r.unwrap();
+    if std::mem::take(focus) {
+        r.request_focus();
+    }
+    r
+}
+
+/// 1px rule directly under the bar.
+pub fn separator(ui: &mut egui::Ui, p: &Pal) {
+    let gap = std::mem::replace(&mut ui.spacing_mut().item_spacing.y, 0.0);
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), 1.0), Sense::hover());
+    ui.painter().hline(r.x_range(), r.center().y, Stroke::new(1.0, p.border));
+    ui.spacing_mut().item_spacing.y = gap;
+}
+
+/// A small grey line of text on the gutter.
+pub fn note(ui: &mut egui::Ui, p: &Pal, text: impl Into<String>) {
+    ui.horizontal(|ui| {
+        ui.add_space(GUTTER);
+        ui.label(RichText::new(text.into()).color(p.weak).size(13.0));
+    });
+}
+
+/// Lowercase monospace key hints, same style as the list footer.
+pub fn hints(ui: &mut egui::Ui, p: &Pal, text: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(GUTTER);
+        ui.label(RichText::new(text).font(FontId::monospace(11.0)).color(p.weak));
+    });
+}
+
+/// A spinner followed by a grey message, on the gutter.
+pub fn spinner_line(ui: &mut egui::Ui, p: &Pal, msg: &str) {
+    ui.horizontal(|ui| {
+        ui.add_space(GUTTER);
+        ui.spinner();
+        ui.label(RichText::new(msg).color(p.weak).size(13.0));
+    });
+}
+
+/// The error banner: a fixed-height strip with up to two lines and "dismiss" on
+/// the right gutter. Returns true when "dismiss" was clicked.
+pub fn error_banner(ui: &mut egui::Ui, p: &Pal, msg: &str) -> bool {
+    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width(), ERR_H), Sense::hover());
+    let galley = ui.painter().layout(msg.to_owned(), FontId::proportional(13.0), p.danger, r.width() - 2.0 * GUTTER - 70.0);
+    let pos = pos2(r.left() + GUTTER, r.center().y - galley.size().y / 2.0);
+    ui.painter().galley(pos, galley, p.danger);
+    let dm = Rect::from_min_max(pos2(r.right() - GUTTER - 64.0, r.top()), pos2(r.right() - GUTTER, r.bottom()));
+    let mut dismissed = false;
+    ui.scope_builder(UiBuilder::new().max_rect(dm).layout(Layout::right_to_left(Align::Center)), |ui| {
+        dismissed = link(ui, "dismiss", p.weak).clicked();
+    });
+    ui.advance_cursor_after_rect(r);
+    ui.painter().hline(r.x_range(), r.bottom() - 0.5, Stroke::new(1.0, p.border));
+    dismissed
+}
+
+/// Replace the home directory prefix with `~`.
+pub fn tilde(path: &str) -> String {
+    match dirs::home_dir().and_then(|h| h.to_str().map(str::to_owned)) {
+        Some(h) => path.replacen(&h, "~", 1),
+        None => path.to_owned(),
+    }
+}

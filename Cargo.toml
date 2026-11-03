@@ -7,6 +7,7 @@ license = "MIT"
 [dependencies]
 age = { version = "0.12.1", features = ["armor"] }
 arboard = { version = "3.7.0", features = ["wayland-data-control"] }
+clap = { version = "4.6.7", features = ["derive"] }
 dirs = "7.0.0"
 eframe = "0.37.0"
 getrandom = "0.4.3"

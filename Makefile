@@ -5,7 +5,7 @@
 #   make install      build, install for the current user, (re)start the background instance
 #   make uninstall    remove everything `install` created (never touches pass.rage)
 #
-# `jpass --install` does the actual per-user setup (it is also what runs on
+# `jpass install` does the actual per-user setup (it is also what runs on
 # the very first launch), so the layout is defined in one place: src/install.rs.
 
 CARGO ?= cargo
@@ -26,7 +26,7 @@ run: build
 	$(BIN)
 
 install: build stop
-	$(BIN) --install
+	$(BIN) install
 	@$(MAKE) --no-print-directory start
 
 restart: stop start
@@ -36,10 +36,10 @@ stop:
 
 ifeq ($(UNAME),Darwin)
 start:
-	open -g -a jpass --args --hidden
+	open -g -a jpass --args hidden
 else
 start:
-	@( setsid nohup "$(HOME)/.local/bin/jpass" --hidden >/dev/null 2>&1 & )
+	@( setsid nohup "$(HOME)/.local/bin/jpass" hidden >/dev/null 2>&1 & )
 endif
 
 # Removes the installed app, launcher, autostart entry and first-run marker.

@@ -1,4 +1,4 @@
-//! First-run / `--install` setup: make jpass a proper desktop application that
+//! First-run / `install` setup: make jpass a proper desktop application that
 //! starts at login, so its global hotkey is always live.
 //!
 //! * macOS:  `/Applications/jpass.app` (falls back to `~/Applications`) + a
@@ -21,6 +21,12 @@ fn marker_path() -> Option<PathBuf> {
 
 pub fn is_installed() -> bool {
     marker_path().is_some_and(|p| p.exists())
+}
+
+/// `jpass install`: (re)install and print what was done.
+pub fn main() -> Result<(), String> {
+    run()?.iter().for_each(|l| println!("{l}"));
+    Ok(())
 }
 
 /// Install and remember that we did. Returns a human-readable log.
@@ -84,7 +90,7 @@ fn platform_install() -> Result<Vec<String>, String> {
          Name=jpass\n\
          GenericName=Password Manager\n\
          Comment=Search and copy passwords (show/hide)\n\
-         Exec={bin_s} --toggle\n\
+         Exec={bin_s} toggle\n\
          Icon=dialog-password\n\
          Terminal=false\n\
          Categories=Utility;Security;\n\
@@ -99,7 +105,7 @@ fn platform_install() -> Result<Vec<String>, String> {
          Type=Application\n\
          Name=jpass\n\
          Comment=jpass background service (global hotkey)\n\
-         Exec={bin_s} --hidden\n\
+         Exec={bin_s} hidden\n\
          Icon=dialog-password\n\
          Terminal=false\n\
          X-GNOME-Autostart-enabled=true\n\
@@ -113,7 +119,7 @@ fn platform_install() -> Result<Vec<String>, String> {
     let _ = Command::new("kbuildsycoca6").output();
 
     log.push("hotkey: Alt+Space (the Cmd key) while jpass runs in the background; \
-              or bind `jpass --toggle` in your desktop's shortcut settings"
+              or bind `jpass toggle` in your desktop's shortcut settings"
         .into());
     Ok(log)
 }
@@ -159,7 +165,7 @@ fn platform_install() -> Result<Vec<String>, String> {
          <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
          <plist version=\"1.0\"><dict>\n\
          <key>Label</key><string>com.jpass.app</string>\n\
-         <key>ProgramArguments</key><array><string>{bin}</string><string>--hidden</string></array>\n\
+         <key>ProgramArguments</key><array><string>{bin}</string><string>hidden</string></array>\n\
          <key>RunAtLoad</key><true/>\n\
          <key>KeepAlive</key><false/>\n\
          <key>ProcessType</key><string>Interactive</string>\n\
