@@ -26,7 +26,7 @@ It is a personal tool, not a team vault: one passphrase, one file, no accounts, 
 
 | Key | Action |
 | --- | --- |
-| `Alt+Space` (Linux, X11/XWayland) / `Cmd+Space` (macOS) | show / hide jpass (global) |
+| `Alt+Space` (Linux) / `Cmd+Space` (macOS) | show / hide jpass (global) |
 | type | filter by account or identifier |
 | `↑` `↓` | move selection |
 | `Enter` | copy the password and close |
@@ -40,11 +40,12 @@ It is a personal tool, not a team vault: one passphrase, one file, no accounts, 
 The window also hides when it loses focus. After 5 minutes hidden, the vault locks again.
 The clipboard is cleared 20 seconds after a copy.
 
-On Wayland the compositor does not let an application grab keys by itself. The built-in
-shortcut works through XWayland; the dependable alternative is to bind the command
-`jpass toggle` to a key in your desktop's shortcut settings. (KDE may refuse to give the
-keyboard to a window that was shown without a key press behind it, for example by a script
-running `jpass toggle`; the window then just blinks in the task bar.)
+On KDE the hotkey is an ordinary global shortcut that runs `jpass toggle`; jpass registers
+it when it starts (change the key in System Settings → Shortcuts → jpass). The compositor
+consumes it, so the app you are in never sees the key press. On X11 desktops jpass grabs
+the key itself. On other Wayland desktops bind `jpass toggle` to a key in the shortcut
+settings. When shown this way jpass asks the window manager to focus it (KWin, or
+`xdotool` on X11), so the window does not just blink in the task bar.
 
 ### Command line
 

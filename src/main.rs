@@ -1,7 +1,10 @@
 mod app;
 mod components;
+#[cfg(not(target_os = "macos"))]
+mod desktop;
 mod import;
 mod install;
+mod launcher;
 mod model;
 mod pwgen;
 mod vault;
@@ -9,12 +12,23 @@ mod view;
 
 use app::Remote;
 
-/// age-encrypted CSV password manager
+fn main() -> eframe::Result {
+    let cli = <Cli as clap::Parser>::parse();
+    match cli.command.unwrap_or(Cmd::Toggle) {
+        Cmd::Toggle => app::run(Remote::Toggle, false),
+        Cmd::Show => app::run(Remote::Show, false),
+        Cmd::Hidden => app::run(Remote::Toggle, true),
+        Cmd::Import { file } => finish(import::main(&file)),
+        Cmd::Install => finish(install::main().map_err(|e| format!("install failed: {e}"))),
+    }
+}
+
+/// age-encrypted CSV password manager and application launcher
 #[derive(clap::Parser)]
 #[command(
     version,
     after_help = "File: ~/pCloudDrive/pass.rage, on macOS ~/pCloud Drive/pass.rage (created on first run if missing)\n\n\
-                  Built-in global hotkey (macOS / X11): Cmd+Space"
+                  Global hotkey: Cmd+Space on macOS, Alt+Space on Linux (a KDE shortcut, or an X11 grab)"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -38,25 +52,11 @@ enum Cmd {
     Install,
 }
 
-fn main() -> eframe::Result {
-    let cli = <Cli as clap::Parser>::parse();
-    match cli.command.unwrap_or(Cmd::Toggle) {
-        Cmd::Import { file } => match import::main(&file) {
-            Ok(()) => std::process::exit(0),
-            Err(e) => {
-                eprintln!("jpass: {e}");
-                std::process::exit(1);
-            }
-        },
-        Cmd::Install => match install::main() {
-            Ok(()) => Ok(()),
-            Err(e) => {
-                eprintln!("jpass: install failed: {e}");
-                std::process::exit(1);
-            }
-        },
-        Cmd::Toggle => app::run(Remote::Toggle, false),
-        Cmd::Show => app::run(Remote::Show, false),
-        Cmd::Hidden => app::run(Remote::Toggle, true),
+/// End a command-line subcommand: report an error and set the exit code.
+fn finish(result: Result<(), String>) -> ! {
+    if let Err(e) = result {
+        eprintln!("jpass: {e}");
+        std::process::exit(1);
     }
+    std::process::exit(0)
 }

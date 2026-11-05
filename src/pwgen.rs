@@ -4,12 +4,45 @@
 //!
 //! Randomness comes straight from the operating system's CSPRNG.
 
+pub fn generate() -> String {
+    let mut chars = syllables();
+    let capital = capitalise_one(&mut chars);
+    digit_for_one(&mut chars, capital);
+    String::from_utf8(chars).expect("ASCII")
+}
+
+const GROUPS: usize = 3;
+/// Consonant-vowel pattern of every 6-letter group: C V C C V C.
+const PATTERN: [bool; 6] = [false, true, false, false, true, false];
 const CONSONANTS: &[u8] = b"bcdfghjkmnprstvwz"; // no l, q, x, y: unambiguous and easy to type
 const VOWELS: &[u8] = b"aeiou";
 const DIGITS: &[u8] = b"23456789"; // no 0 or 1
-/// Consonant-vowel pattern of every 6-letter group: C V C C V C.
-const PATTERN: [bool; 6] = [false, true, false, false, true, false]; // true = vowel
-const GROUPS: usize = 3;
+
+/// `GROUPS` pronounceable groups joined by hyphens, all lowercase.
+fn syllables() -> Vec<u8> {
+    let group = || PATTERN.map(|vowel| pick(if vowel { VOWELS } else { CONSONANTS }));
+    (0..GROUPS).map(|_| group()).collect::<Vec<_>>().join(&b'-')
+}
+
+/// Capitalise one letter and return its index. Never i or o, which look like
+/// l and 0 when capitalised.
+fn capitalise_one(chars: &mut [u8]) -> usize {
+    let spots: Vec<usize> = (0..chars.len()).filter(|&i| !matches!(chars[i], b'-' | b'i' | b'o')).collect();
+    let i = spots[below(spots.len())];
+    chars[i] = chars[i].to_ascii_uppercase();
+    i
+}
+
+/// Replace one letter other than `keep` with a digit.
+fn digit_for_one(chars: &mut [u8], keep: usize) {
+    let spots: Vec<usize> = (0..chars.len()).filter(|&i| chars[i] != b'-' && i != keep).collect();
+    let i = spots[below(spots.len())];
+    chars[i] = pick(DIGITS);
+}
+
+fn pick(set: &[u8]) -> u8 {
+    set[below(set.len())]
+}
 
 /// Uniform random number in `0..n` (rejection sampling, no modulo bias).
 fn below(n: usize) -> usize {
@@ -24,36 +57,6 @@ fn below(n: usize) -> usize {
             return (v % n) as usize;
         }
     }
-}
-
-fn pick(set: &[u8]) -> u8 {
-    set[below(set.len())]
-}
-
-pub fn generate() -> String {
-    let mut chars: Vec<u8> = Vec::with_capacity(GROUPS * 7);
-    for g in 0..GROUPS {
-        if g > 0 {
-            chars.push(b'-');
-        }
-        for &vowel in &PATTERN {
-            chars.push(pick(if vowel { VOWELS } else { CONSONANTS }));
-        }
-    }
-
-    // One capital letter (never i or o, which look like l and 0 when capitalised).
-    let letters: Vec<usize> = (0..chars.len()).filter(|&i| chars[i] != b'-').collect();
-    let capital_spots: Vec<usize> =
-        letters.iter().copied().filter(|&i| !matches!(chars[i], b'i' | b'o')).collect();
-    let cap = capital_spots[below(capital_spots.len())];
-    chars[cap] = chars[cap].to_ascii_uppercase();
-
-    // One digit replacing a different letter.
-    let digit_spots: Vec<usize> = letters.into_iter().filter(|&i| i != cap).collect();
-    let dig = digit_spots[below(digit_spots.len())];
-    chars[dig] = pick(DIGITS);
-
-    String::from_utf8(chars).expect("ASCII")
 }
 
 #[cfg(test)]
