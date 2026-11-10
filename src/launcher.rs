@@ -4,7 +4,7 @@
 //! macOS: scans `/Applications` and `~/Applications` for `.app` bundles.
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 #[derive(Clone, Debug)]
@@ -12,9 +12,13 @@ pub struct App {
     pub name: String,
     pub exec: String,
     pub comment: String,
+    /// Linux: an icon file (PNG/SVG). macOS: the `.app` bundle, whose icon
+    /// the system renders for us.
     pub icon_path: Option<String>,
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub wm_class: Option<String>,
     /// `.desktop` file stem (Wayland app_id), e.g. `org.telegram.desktop`.
+    #[cfg_attr(target_os = "macos", allow(dead_code))]
     pub desktop_id: String,
 }
 
@@ -56,17 +60,24 @@ impl IconCache {
 /// Icons are rasterised at this size; drawn at `components::ICON` logical px.
 const ICON_PX: u32 = 48;
 
-/// PNG, JPEG, BMP and GIF are decoded natively; SVGs go through `rsvg-convert`.
 fn load_icon(ctx: &eframe::egui::Context, path: &str) -> Option<eframe::egui::TextureHandle> {
-    let p = Path::new(path);
-    let rgba = match p.extension().and_then(|e| e.to_str()) {
-        Some("svg" | "svgz") => load_svg(p)?,
-        _ => image::open(p).ok()?.into_rgba8(),
-    };
+    let rgba = decode_icon(Path::new(path))?;
     let resized = image::imageops::resize(&rgba, ICON_PX, ICON_PX, image::imageops::FilterType::Lanczos3);
     let size = [resized.width() as usize, resized.height() as usize];
     let color = eframe::egui::ColorImage::from_rgba_unmultiplied(size, &resized.into_raw());
     Some(ctx.load_texture(path, color, eframe::egui::TextureOptions::LINEAR))
+}
+
+/// Straight (non-premultiplied) RGBA pixels of an icon, any size. PNG, JPEG,
+/// BMP and GIF are decoded natively; SVGs go through `rsvg-convert`; on macOS
+/// an `.app` bundle is rendered by AppKit.
+fn decode_icon(p: &Path) -> Option<image::RgbaImage> {
+    match p.extension().and_then(|e| e.to_str()) {
+        #[cfg(target_os = "macos")]
+        Some("app") => platform::bundle_icon(p),
+        Some("svg" | "svgz") => load_svg(p),
+        _ => image::open(p).ok().map(|i| i.into_rgba8()),
+    }
 }
 
 fn load_svg(path: &Path) -> Option<image::RgbaImage> {
@@ -83,6 +94,7 @@ fn load_svg(path: &Path) -> Option<image::RgbaImage> {
 #[cfg(not(target_os = "macos"))]
 mod platform {
     use super::*;
+    use std::path::PathBuf;
 
     pub fn scan_apps() -> Vec<App> {
         let data_dirs = xdg_data_dirs();
@@ -374,26 +386,35 @@ mod platform {
 mod platform {
     use super::*;
 
+    /// Third-party apps in `/Applications` and `~/Applications`, Apple's own
+    /// (Mail, Notes, ...) in `/System/Applications`; each with its `Utilities`
+    /// and vendor subfolders.
     pub fn scan_apps() -> Vec<App> {
         let mut apps = Vec::new();
-        scan_macos_dir(Path::new("/Applications"), &mut apps);
+        scan_macos_dir(Path::new("/Applications"), 2, &mut apps);
+        scan_macos_dir(Path::new("/System/Applications"), 2, &mut apps);
         if let Some(h) = dirs::home_dir() {
-            scan_macos_dir(&h.join("Applications"), &mut apps);
+            scan_macos_dir(&h.join("Applications"), 2, &mut apps);
         }
         apps
     }
 
-    fn scan_macos_dir(dir: &Path, apps: &mut Vec<App>) {
+    fn scan_macos_dir(dir: &Path, depth: u8, apps: &mut Vec<App>) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
         for path in entries.flatten().map(|e| e.path()) {
-            if path.extension().is_some_and(|e| e == "app") {
+            if !path.extension().is_some_and(|e| e == "app") {
+                if depth > 1 && path.is_dir() {
+                    scan_macos_dir(&path, depth - 1, apps);
+                }
+            } else {
                 let name = path.file_stem().unwrap_or_default().to_string_lossy().to_string();
+                let bundle = path.to_string_lossy().to_string();
                 apps.push(App {
-                    exec: path.to_string_lossy().to_string(),
+                    exec: bundle.clone(),
+                    icon_path: Some(bundle),
                     desktop_id: name.clone(),
                     name,
                     comment: String::new(),
-                    icon_path: None,
                     wm_class: None,
                 });
             }
@@ -402,6 +423,65 @@ mod platform {
 
     pub fn launch(app: &App) {
         spawn_detached(Command::new("open").args(["-a", app.exec.as_str()]));
+    }
+
+    /// The bundle's icon as straight RGBA at `ICON_PX`, rendered by AppKit.
+    ///
+    /// App icons live in `.icns` files or asset catalogs (`Assets.car`), and
+    /// `NSWorkspace` is the only decoder that handles both. It hands back an
+    /// `NSImage`; drawing that into a bitmap gives premultiplied pixels, which
+    /// are un-premultiplied here so every platform's decoder returns the same.
+    pub fn bundle_icon(bundle: &Path) -> Option<image::RgbaImage> {
+        use objc2_app_kit::{
+            NSBitmapImageRep, NSCompositingOperation, NSDeviceRGBColorSpace, NSGraphicsContext, NSWorkspace,
+        };
+        use objc2::AllocAnyThread;
+        use objc2_foundation::{NSPoint, NSRect, NSSize, NSString};
+
+        let image = NSWorkspace::sharedWorkspace().iconForFile(&NSString::from_str(&bundle.to_string_lossy()));
+        let n = ICON_PX as isize;
+        // SAFETY: a null plane pointer makes AppKit allocate and own the pixel
+        // buffer; the sizes describe 8-bit RGBA rows of exactly `n` pixels.
+        let rep = unsafe {
+            NSBitmapImageRep::initWithBitmapDataPlanes_pixelsWide_pixelsHigh_bitsPerSample_samplesPerPixel_hasAlpha_isPlanar_colorSpaceName_bytesPerRow_bitsPerPixel(
+                NSBitmapImageRep::alloc(),
+                std::ptr::null_mut(),
+                n,
+                n,
+                8,
+                4,
+                true,
+                false,
+                NSDeviceRGBColorSpace,
+                n * 4,
+                32,
+            )
+        }?;
+        let gfx = NSGraphicsContext::graphicsContextWithBitmapImageRep(&rep)?;
+        NSGraphicsContext::saveGraphicsState_class();
+        NSGraphicsContext::setCurrentContext(Some(&gfx));
+        let rect = NSRect::new(NSPoint::ZERO, NSSize::new(n as f64, n as f64));
+        image.drawInRect_fromRect_operation_fraction(rect, NSRect::ZERO, NSCompositingOperation::Copy, 1.0);
+        gfx.flushGraphics();
+        NSGraphicsContext::restoreGraphicsState_class();
+
+        let stride = rep.bytesPerRow() as usize;
+        let data = rep.bitmapData();
+        if data.is_null() {
+            return None;
+        }
+        let w = ICON_PX as usize;
+        let mut out = Vec::with_capacity(w * w * 4);
+        for y in 0..w {
+            // SAFETY: `rep` owns `stride * n` bytes and stays alive for this loop.
+            let row = unsafe { std::slice::from_raw_parts(data.add(y * stride), w * 4) };
+            for px in row.chunks_exact(4) {
+                let a = px[3];
+                let straight = |c: u8| if a == 0 { 0 } else { ((c as u32 * 255 + a as u32 / 2) / a as u32).min(255) as u8 };
+                out.extend_from_slice(&[straight(px[0]), straight(px[1]), straight(px[2]), a]);
+            }
+        }
+        image::RgbaImage::from_raw(ICON_PX, ICON_PX, out)
     }
 }
 
@@ -434,5 +514,25 @@ mod tests {
         let apps = scan();
         let with_icon = apps.iter().filter(|a| a.icon_path.is_some()).count();
         assert!(with_icon > 0, "should resolve at least one icon path");
+    }
+
+    /// Apple's own apps live outside `/Applications`.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn finds_system_apps() {
+        let apps = scan();
+        for name in ["Mail", "Notes", "Terminal"] {
+            assert!(apps.iter().any(|a| a.name == name), "{name} not found");
+        }
+    }
+
+    /// The first app's icon decodes to an opaque-somewhere image of the right size.
+    #[test]
+    fn first_icon_decodes() {
+        let apps = scan();
+        let path = apps.iter().find_map(|a| a.icon_path.as_deref()).expect("an app with an icon");
+        let rgba = decode_icon(Path::new(path)).unwrap_or_else(|| panic!("cannot decode {path}"));
+        assert!(rgba.width() > 0 && rgba.height() > 0);
+        assert!(rgba.pixels().any(|p| p[3] > 0), "icon is fully transparent: {path}");
     }
 }
