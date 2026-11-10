@@ -163,8 +163,10 @@ fn platform_install() -> Result<Vec<String>, String> {
     let mut log = Vec::new();
     let app = install_bundle(&own_binary()?, &home, &mut log)?;
     log.push(write_file(&app.join("Contents/Info.plist"), INFO_PLIST)?);
-    log.push(write_file(&agent_path, &launch_agent(&app.join(BUNDLE_BIN)))?);
-    register_app(&app, &agent_path);
+    let log_file = home.join("Library/Logs/jpass.log");
+    log.push(write_file(&agent_path, &launch_agent(&app.join(BUNDLE_BIN), &log_file))?);
+    sign_bundle(&app);
+    log.push(reload_agent(&agent_path)?);
     log.push(HOTKEY_NOTE.into());
     Ok(log)
 }
@@ -202,32 +204,57 @@ const INFO_PLIST: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
     <key>NSHighResolutionCapable</key><true/>\n\
     </dict></plist>\n";
 
-/// LaunchAgent: start hidden at login so Cmd+Space is always live.
+/// LaunchAgent: start hidden at login so Cmd+Space is always live. stdout and
+/// stderr go to `log_file`, so a failed hotkey registration is not lost.
 #[cfg(target_os = "macos")]
-fn launch_agent(bin: &Path) -> String {
+fn launch_agent(bin: &Path, log_file: &Path) -> String {
     format!(
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n\
          <!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n\
          <plist version=\"1.0\"><dict>\n\
          <key>Label</key><string>com.jpass.app</string>\n\
-         <key>ProgramArguments</key><array><string>{}</string><string>hidden</string></array>\n\
+         <key>ProgramArguments</key><array><string>{bin}</string><string>hidden</string></array>\n\
          <key>RunAtLoad</key><true/>\n\
          <key>KeepAlive</key><false/>\n\
          <key>ProcessType</key><string>Interactive</string>\n\
+         <key>StandardOutPath</key><string>{log}</string>\n\
+         <key>StandardErrorPath</key><string>{log}</string>\n\
          </dict></plist>\n",
-        bin.display()
+        bin = bin.display(),
+        log = log_file.display()
     )
 }
 
-/// Best effort: ad-hoc sign so Gatekeeper lets the copied binary run, and
-/// register the login item for this session.
+/// Best effort: ad-hoc sign so Gatekeeper lets the copied binary run.
 #[cfg(target_os = "macos")]
-fn register_app(app: &Path, agent_path: &Path) {
+fn sign_bundle(app: &Path) {
     let _ = Command::new("codesign").args(["--force", "--deep", "-s", "-"]).arg(app).output();
     let _ = Command::new("xattr").args(["-dr", "com.apple.quarantine"]).arg(app).output();
-    let Ok(id) = Command::new("id").arg("-u").output() else { return };
-    let uid = String::from_utf8_lossy(&id.stdout).trim().to_string();
-    let _ = Command::new("launchctl").args(["bootstrap", &format!("gui/{uid}")]).arg(agent_path).output();
+}
+
+/// (Re)load the LaunchAgent, which also starts the background instance.
+///
+/// `bootstrap` alone is not enough: it fails when the label is already loaded,
+/// so launchd would keep the definition from the last login (old arguments),
+/// and since launchd pins the code hash of the binary it refuses to spawn a
+/// reinstalled, re-signed binary ("spawn failed", OS_REASON_CODESIGNING).
+/// Booting out first drops both. The failure of `bootout` is expected when
+/// the agent is not loaded; a failed `bootstrap` is an install error.
+#[cfg(target_os = "macos")]
+fn reload_agent(agent_path: &Path) -> Result<String, String> {
+    let uid = Command::new("id").arg("-u").output().map_err(|e| format!("cannot run id: {e}"))?;
+    let domain = format!("gui/{}", String::from_utf8_lossy(&uid.stdout).trim());
+    let _ = Command::new("launchctl").args(["bootout", &format!("{domain}/com.jpass.app")]).output();
+    let out = Command::new("launchctl")
+        .args(["bootstrap", &domain])
+        .arg(agent_path)
+        .output()
+        .map_err(|e| format!("cannot run launchctl: {e}"))?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        return Err(format!("launchctl bootstrap {}: {}", agent_path.display(), msg.trim()));
+    }
+    Ok("loaded the LaunchAgent (jpass now runs in the background and starts at login)".into())
 }
 
 #[cfg(target_os = "macos")]

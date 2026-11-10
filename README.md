@@ -114,6 +114,10 @@ make uninstall      # remove what install created (never touches pass.rage)
 - **Linux:** `~/.local/bin/jpass`, a launcher in `~/.local/share/applications`, and an
   autostart entry in `~/.config/autostart` (starts hidden at login so the hotkey is always live).
 - **macOS:** `/Applications/jpass.app` (or `~/Applications`) and a login LaunchAgent.
+  `jpass install` unloads and reloads the agent, so launchd picks up the new binary and
+  arguments at once (launchd otherwise keeps the old definition and refuses a re-signed
+  binary). The background instance logs to `~/Library/Logs/jpass.log`; look there when
+  the hotkey does nothing.
 
 The same setup runs automatically the first time the binary is launched.
 

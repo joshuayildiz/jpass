@@ -34,9 +34,11 @@ restart: stop start
 stop:
 	-@pkill -x jpass 2>/dev/null; true
 
+# macOS: `jpass install` (re)loads the LaunchAgent, which starts the instance;
+# `start` only matters after a `stop`. Output goes to ~/Library/Logs/jpass.log.
 ifeq ($(UNAME),Darwin)
 start:
-	open -g -a jpass --args hidden
+	launchctl kickstart gui/$$(id -u)/com.jpass.app
 else
 start:
 	@( setsid nohup "$(HOME)/.local/bin/jpass" hidden >/dev/null 2>&1 & )
@@ -50,6 +52,7 @@ ifeq ($(UNAME),Darwin)
 	rm -f "$(HOME)/Library/LaunchAgents/com.jpass.app.plist"
 	rm -rf /Applications/jpass.app "$(HOME)/Applications/jpass.app"
 	rm -rf "$(HOME)/Library/Application Support/jpass"
+	rm -f "$(HOME)/Library/Logs/jpass.log"
 else
 	rm -f "$(HOME)/.local/bin/jpass"
 	rm -f "$(HOME)/.local/share/applications/jpass.desktop"
